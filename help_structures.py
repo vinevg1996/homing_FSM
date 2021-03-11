@@ -15,6 +15,18 @@ class List:
         else:
             return (self.in_list == other.in_list)
 
+    def get_one(self):
+        for k in range(0, len(self.in_list)):
+            if self.in_list[k] == 1:
+                return k
+        return -1
+
+    def return_as_str(self):
+        string = str()
+        for k in range(0, len(self.in_list)):
+            string += str(self.in_list[k]) + ' '
+        return string
+
     def count_items(self):
         m = 0
         for s in self.in_list:
@@ -45,6 +57,15 @@ class Transition:
 
     def Print(self):
         print("source_st = ", self.source_st.in_list, ": ", "i = ", self.i, ": ", "o = ", self.o, ": ", "target_st = ", self.target_st.in_list)
+        return
+
+    def Print_to_file_as_htc_fsm(self, file):
+        H = Helper()
+        out_str = str(H.binary_list_to_dig(self.source_st.in_list))
+        out_str += ' ' + str(self.i)
+        out_str += ' ' + str(H.binary_list_to_dig(self.target_st.in_list))
+        out_str += ' ' + str(self.o) + '\n'
+        file.write(out_str)
         return
 
 class IO_Succ:
@@ -172,6 +193,18 @@ class State:
                 return False
         return True
 
+    def is_defined(self):
+        for i in range(0, self.I):
+            if (self.i_succs[i].is_defined()):
+                return True
+        return False
+
+    def get_input(self):
+        for i in range(0, self.I):
+            if (self.i_succs[i].is_defined()):
+                return i
+        return -1
+
     def is_reached(self):
         return len(self.precs) > 0
 
@@ -196,3 +229,44 @@ class State:
             else:
                 print("i = ", i, ": Undefined_input:")
         return
+
+class Helper:
+    def __init__(self):
+        return
+
+    def str_to_dig(self, dig_str):
+        dig_list = list(dig_str)
+        return self.binary_list_to_dig(dig_list)
+
+    def dig_to_str(self, dig):
+        str_dig = "{0:b}".format(dig)
+        rev_str = str()
+        for i in range(0, len(str_dig)):
+            rev_str += str_dig[len(str_dig) - i - 1]
+        return rev_str
+
+    def binary_list_to_dig(self, dig_list):
+        binary_str = "0b"
+        for i in range(0, len(dig_list)):
+            binary_str += str(dig_list[len(dig_list) - i - 1])
+        #print("binary_str = ", binary_str)
+        return int(binary_str, 2)
+
+    def dig_to_binary(self, dig, dig_number):
+        str_dig = "{0:0" + str(dig_number) + "b}"
+        str_dig = str_dig.format(dig)
+        dig_list = list()
+        for i in range(0, len(str_dig)):
+            dig_list.append(int(str_dig[len(str_dig) - i - 1]))
+        return dig_list
+
+    def read_htc_tran_from_line(self, line, S):
+        line_list = line.split(' ')
+        state_dig = int(line_list[0])
+        i = int(line_list[1])
+        next_state_dig = int(line_list[2])
+        o = int(line_list[3])
+        state = List(self.dig_to_binary(state_dig, S))
+        next_state = List(self.dig_to_binary(next_state_dig, S))
+        tran = Transition(state, i, o, next_state)
+        return tran

@@ -257,14 +257,14 @@ class FSM:
             step = step + 1
         if (comlete_submachine_flag):
             print("does not have an adaptive HS")
-            return -1
+            return [-1, None]
         else:
             print("has an adaptive HS: step = ", step)
             print("set_incomlete_states:")
             for incomlete_state in set_incomlete_states:
                 print(incomlete_state.in_list)
-            S_next.rec_create_HTC(self, set_incomlete_states, step)
-            return step
+            htc = S_next.create_HTC(self, set_incomlete_states, step)
+            return [step, htc]
 
     def is_orbita_for_htc(self, orbita, set_incomlete_states, length):
         if (length == 1):
@@ -279,6 +279,7 @@ class FSM:
             return True
 
     def is_diff_by_i(self, source_FSM, set_incomlete_states, state, i, length):
+        flag = self.states[state].i_succs[i].is_to_fail_trans()
         if (self.states[state].i_succs[i].is_to_fail_trans()):
             return False
         orbita = set()
@@ -292,7 +293,7 @@ class FSM:
         if (length == 1):
             return True
         for state in orbita:
-            next_i = find_diff_input(source_FSM, set_incomlete_states, state, length - 1)
+            next_i = self.find_diff_input(source_FSM, set_incomlete_states, state, length - 1)
             if (next_i == -1):
                 return False
         return True
@@ -300,98 +301,44 @@ class FSM:
     def find_diff_input(self, source_FSM, set_incomlete_states, state, length):
         # return i differs state
         for i in range(0, self.I):
+            #flag = self.is_diff_by_i(source_FSM, set_incomlete_states, state, i, length)
+            #print("state = ", state.in_list, "i = ", i, "flag = ", flag)
             if (self.is_diff_by_i(source_FSM, set_incomlete_states, state, i, length)):
                 return i
         return -1
 
-    def rec_create_HTC(self, source_FSM, set_incomlete_states, length):
+    def create_HTC(self, source_FSM, set_incomlete_states, length):
         htc = FSM(self.S, self.I, self.O)
         htc.init_states = List(self.init_states.in_list)
-        htc.add_state_to_htc(self.init_states)
-        if (length >= 1):
-            building_htc(source_FSM, set_incomlete_states, htc, length)
+        self.add_state_to_htc(htc, self.init_states)
+        self.building_htc(source_FSM, set_incomlete_states, htc, self.init_states, length)
+        return htc
+
+    def building_htc(self, source_FSM, set_incomlete_states, htc, state, length):
+        if (length == 0):
+            return
+        i = self.find_diff_input(source_FSM, set_incomlete_states, state, length)
+        print("state = ", state.in_list, ": i = ", i)
+        for o in range(0, self.O):
+            [string, next_state] = source_FSM.compute_next_ext_state(state, i, o)
+            if (string == "Defined") or (next_state.count_items() == 1):
+                if not(next_state in htc.states.keys()):
+                    self.add_state_to_htc(htc, next_state)
+                    self.building_htc(source_FSM, set_incomlete_states, htc, next_state, length - 1)
+                tran = Transition(state, i, o, next_state)
+                self.add_tran_to_htc(htc, tran)
         return
 
-    def building_htc(self, source_FSM, set_incomlete_states, htc, length):
+    def add_tran_to_htc(self, htc, tran):
+        htc.states[tran.source_st].i_succs[tran.i].io_succs[tran.o].state_vector = List(tran.target_st.in_list)
+        htc.states[tran.source_st].i_succs[tran.i].io_succs[tran.o].is_defined = True
         return
 
-    def add_state_to_htc(self, state):
-        if (state in self.states.keys()):
+    def add_state_to_htc(self, htc, state):
+        if not(state in htc.states.keys()):
             htc.states[state] = State(self.S, self.I, self.O)
             htc.states[state].is_exist = True
             htc.states[state].state_vector = List(state.in_list)
-        return
-
-    def create_next_HTC(self, source_FSM, curr_FSM, curr_orbita, i):
-        next_FSM = FSM(curr_FSM.S, curr_FSM.I, curr_FSM.O)
-        next_FSM.copy(curr_FSM)
-        set_next_orbita = set()
-        for state in curr_orbita:
-            for o in range(0, self.O):
-                [string, next_state] = source_FSM.compute_next_ext_state(state, i, o)
-                if not(next_state in next_FSM.states.keys()) and (next_state.count_items() >= 1):
-                    next_FSM.states[next_state] = State(self.S, self.I, self.O)
-                    next_FSM.states[next_state].is_exist = True
-                    next_FSM.states[next_state].state_vector = List(next_state.in_list)
-                    set_next_orbita.add(next_state)
-                next_FSM.states[state].i_succs[i].io_succs[o].is_defined = True
-                next_FSM.states[state].i_succs[i].io_succs[o].state_vector = List(next_state.in_list)
-        return [next_FSM, set_next_orbita]
-
-    def is_create_next_HTC(self, source_FSM, curr_orbita, set_incomlete_states, i):
-        for state in curr_orbita:
-            if (state.count_items() > 1):
-                if (self.states[state].i_succs[i].is_to_fail_trans()):
-                    return False
-                for o in range(0, self.O):
-                    [string, next_ext_state] = source_FSM.compute_next_ext_state(state, i, o)
-                    is_incomlete_state = (self.states[state].i_succs[i].io_succs[o].is_defined) and (next_ext_state in set_incomlete_states)
-                    is_single_or_empty = next_ext_state.count_items() <= 1
-                    #print("i = ", i, "o = ", o, next_ext_state.in_list)
-                    if not(is_incomlete_state or is_single_or_empty):
-                        return False
-        return True
-
-    def create_HTC(self, source_FSM, set_incomlete_states, length):
-        set_curr_orbita = set()
-        list_curr_fsms = list()
-        init_FSM = FSM(self.S, self.I, self.O)
-        init_FSM.states[self.init_states] = State(self.S, self.I, self.O)
-        init_FSM.states[self.init_states].is_exist = True
-        init_FSM.states[self.init_states].state_vector = List(self.init_states.in_list)
-        init_FSM.init_states = List(self.init_states.in_list)
-        set_curr_orbita.add(self.init_states)
-        list_curr_fsms.append([init_FSM, set_curr_orbita])
-        for k in range(0, length + 1):
-            list_next_fsms = list()
-            list_pred_HTC = list()
-            print("len = ", len(list_curr_fsms))
-            while len(list_curr_fsms) > 0:
-                [curr_FSM, curr_orbita] = list_curr_fsms.pop()
-                list_pred_HTC.append(curr_FSM)
-                for i in range(0, self.I):
-                    #print("k = ", k)
-                    flag = self.is_create_next_HTC(source_FSM, curr_orbita, set_incomlete_states, i)
-                    print("flag = ", flag, ": i = ", i, ": curr_orbita:")
-                    for state in curr_orbita:
-                        print("state = ", state.in_list)
-                    if (flag):
-                        [next_FSM, set_next_orbita] = self.create_next_HTC(source_FSM, curr_FSM, curr_orbita, i)
-                        list_next_fsms.append([next_FSM, set_next_orbita])
-            print("list_pred_HTC:")
-            for htc in list_pred_HTC:
-                print("===================")
-                #htc.Print()
-                print("===================")
-            #list_curr_fsms = list(list_next_fsms)
-            for item in list_next_fsms:
-                curr_FSM = FSM(item[0].S, item[0].I, item[0].O)
-                curr_FSM.copy(item[0])
-                curr_orbita = set()
-                for state in item[1]:
-                    copy_state = List(state.in_list)
-                    curr_orbita.add(copy_state)
-                list_curr_fsms.append([curr_FSM, curr_orbita])
         return
 
     def remove_incomplete_state(self, state, incomlete_states, set_incomlete_states):
@@ -425,7 +372,7 @@ class FSM:
                 set_incomlete_states.add(state)
         while len(incomlete_states) > 0:
             state = incomlete_states.pop()
-            print("state = ", self.states[state].state_vector.in_list)
+            #print("state = ", self.states[state].state_vector.in_list)
             if (state == S_home.init_states):
                 set_incomlete_states.add(state)
                 return False
@@ -446,7 +393,88 @@ class FSM:
                     prev_tran.Print()
         return
 
+    def count_trans_number(self):
+        m = 0
+        for state in self.states.keys():
+            if (self.states[state].is_exist):
+                for i in range(0, self.I):
+                    for o in range(0, self.O):
+                        if (self.states[state].i_succs[i].io_succs[o].is_defined):
+                            m += 1
+        return m
+
+    def count_states_number(self):
+        m = 0
+        for state in self.states.keys():
+            if (self.states[state].is_exist):
+                m += 1
+        return m
+
+    def Print_to_file_as_htc(self, file_name):
+        H = Helper()
+        file = open(file_name, 'w')
+        file.write("F 1\n")
+        out_str = "s {0:d}\n".format(self.S)
+        file.write(out_str)
+        file.write("i {0:d}\n".format(self.I))
+        file.write("o {0:d}\n".format(self.O))
+        file.write("n0 {0:d}\n".format(H.binary_list_to_dig(self.init_states.in_list)))
+        trans_number = self.count_trans_number()
+        file.write("p {0:d}\n".format(trans_number))
+        for state in self.states.keys():
+            if (self.states[state].is_exist):
+                for i in range(0, self.I):
+                    for o in range(0, self.O):
+                        if (self.states[state].i_succs[i].io_succs[o].is_defined):
+                            next_state = List(self.states[state].i_succs[i].io_succs[o].state_vector.in_list)
+                            tran = Transition(state, i, o, next_state)
+                            tran.Print_to_file_as_htc_fsm(file)
+        return
+
+    def Print_to_file_as_fsm(self, file_name):
+        H = Helper()
+        file = open(file_name, 'w')
+        file.write("F 1\n")
+        out_str = "s {0:d}\n".format(self.S)
+        file.write(out_str)
+        file.write("i {0:d}\n".format(self.I))
+        file.write("o {0:d}\n".format(self.O))
+        init_states_str = "n0 "
+        for k in self.init_states.in_list:
+            init_states_str += str(k) + ' '
+        init_states_str += '\n'
+        file.write(init_states_str)
+        trans_number = self.count_trans_number()
+        file.write("p {0:d}\n".format(trans_number))
+        for state in self.states.keys():
+            st = state.get_one()
+            if (self.states[state].is_exist):
+                for i in range(0, self.I):
+                    for o in range(0, self.O):
+                        if (self.states[state].i_succs[i].io_succs[o].is_defined):
+                            next_state = List(self.states[state].i_succs[i].io_succs[o].state_vector.in_list)
+                            next_st = next_state.get_one()
+                            out_str = str(st) + ' ' + str(i) + ' ' + str(next_st) + ' ' + str(o) + '\n'
+                            file.write(out_str)
+        return
+
+'''
 fsm = FSM(4, 3, 2)
 fsm.default_fill_fsm()
 #fsm.Print()
-step = fsm.create_S_home()
+[step, htc] = fsm.create_S_home()
+print("htc:")
+htc.Print()
+htc.Print_to_file_as_fsm("tests/htc.fsm")
+
+H = Helper()
+dig_list = [0, 1, 1, 0, 1]
+dig = H.binary_list_to_dig(dig_list)
+print("dig = ", dig)
+ret_list = H.dig_to_binary(dig)
+print("ret_list = ", ret_list)
+string = H.dig_to_str(22)
+print("string = ", string)
+#a = 0b001
+#print("a = ", a)
+'''
